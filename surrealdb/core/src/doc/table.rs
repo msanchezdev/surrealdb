@@ -673,6 +673,7 @@ impl Document {
 				timeout: Expr::Literal(Literal::None),
 				explain: None,
 				tempfiles: false,
+				preserve_order: false,
 			};
 
 			let value = stk.run(|stk| recalc_stmt.compute(stk, ctx, opt, None)).await?;
@@ -1083,6 +1084,7 @@ impl Document {
 				timeout: Expr::Literal(Literal::None),
 				explain: None,
 				tempfiles: false,
+				preserve_order: false,
 			};
 
 			let value = stk.run(|stk| recalc_stmt.compute(stk, ctx, opt, None)).await?;

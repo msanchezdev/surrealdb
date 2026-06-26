@@ -74,6 +74,7 @@ pub(crate) struct SelectPipelineConfig {
 	pub start: Option<crate::expr::start::Start>,
 	pub omit: Vec<Expr>,
 	pub tempfiles: bool,
+	pub preserve_order: bool,
 }
 
 /// Describes how the WHERE predicate should be handled after source planning.
@@ -136,6 +137,7 @@ impl<'ctx> Planner<'ctx> {
 			start,
 			omit,
 			tempfiles,
+			preserve_order,
 		} = config;
 
 		let filtered = match where_clause {
@@ -241,7 +243,7 @@ impl<'ctx> Planner<'ctx> {
 				limited
 			}
 		} else {
-			self.plan_projections_fast(fields, all_omit, limited, &mut registry).await?
+			self.plan_projections_fast(fields, all_omit, limited, &mut registry, preserve_order).await?
 		};
 
 		Ok(projected)

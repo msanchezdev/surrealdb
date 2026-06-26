@@ -438,6 +438,7 @@ fn statements() -> Vec<TopLevelExpr> {
 					timeout: Expr::Literal(Literal::None),
 					explain: None,
 					tempfiles: false,
+					preserve_order: false,
 				}))),
 				op: BinaryOperator::Multiply,
 				right: Box::new(Expr::Literal(Literal::Integer(2))),
@@ -511,6 +512,7 @@ fn statements() -> Vec<TopLevelExpr> {
 			version: Expr::Literal(Literal::Datetime(PublicDatetime::from(expected_datetime))),
 			timeout: Expr::Literal(Literal::None),
 			tempfiles: false,
+			preserve_order: false,
 			explain: Some(Explain(true)),
 		}))),
 		TopLevelExpr::Expr(Expr::Select(Box::new(SelectStatement {
@@ -541,6 +543,7 @@ fn statements() -> Vec<TopLevelExpr> {
 			version: Expr::Literal(Literal::None),
 			timeout: Expr::Literal(Literal::None),
 			tempfiles: false,
+			preserve_order: false,
 			explain: None,
 		}))),
 		TopLevelExpr::Expr(Expr::Let(Box::new(SetStatement {

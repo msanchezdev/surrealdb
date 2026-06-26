@@ -4,7 +4,7 @@ use revision::revisioned;
 use surrealdb_strand::Strand;
 use surrealdb_types::{SqlFormat, ToSql};
 
-use crate::val::{Array, Object, Value};
+use crate::val::{Array, Object, ObjectMap, Value};
 
 #[derive(Debug)]
 pub(crate) struct PatchError {
@@ -92,7 +92,7 @@ impl Operation {
 			res.into()
 		}
 		// Return the JSON patch operation
-		Object(match self {
+		Object(ObjectMap(match self {
 			Operation::Add {
 				path,
 				value,
@@ -161,7 +161,7 @@ impl Operation {
 					"value".into() => value,
 				}
 			}
-		})
+		}), None)
 	}
 
 	/// Returns the operaton encoded in the object, or an error if the object

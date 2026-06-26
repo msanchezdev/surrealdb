@@ -184,7 +184,14 @@ schemars = "1.2.1"
 scrypt = "0.11.0"
 semver = "1.0.28"
 serde = "1.0.228"
-serde_json = "1.0.149"
+# NOTE (field-ordering PoC): `preserve_order` makes `serde_json::Value`'s map an
+# insertion-ordered `IndexMap` instead of a sorted `BTreeMap`, so the JSON `/sql`
+# encoder can emit fields in `PRESERVE ORDER` order. This is a PoC shortcut taken
+# to keep the change small. A production implementation would NOT flip this global
+# feature — it would use a dedicated ordered JSON encoder that walks the value via
+# `Object::iter_display()` and never builds a sorted `serde_json::Value` map, so no
+# global behaviour change is required. See `surrealdb/types/src/value/into_json.rs`.
+serde_json = { version = "1.0.149", features = ["preserve_order"] }
 sha1 = "0.10.6"
 sha2 = "0.10.9"
 snap = "1.1.1"

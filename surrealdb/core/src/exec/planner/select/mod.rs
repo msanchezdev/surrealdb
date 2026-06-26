@@ -675,7 +675,15 @@ impl<'ctx> Planner<'ctx> {
 			timeout,
 			explain: _,
 			tempfiles,
+			preserve_order,
 		} = select;
+
+		// PoC: PRESERVE ORDER only takes effect when the experimental capability is on.
+		let preserve_order = preserve_order
+			&& self
+				.ctx
+				.get_capabilities()
+				.allows_experimental(&crate::dbs::capabilities::ExperimentalTarget::FieldOrdering);
 
 		let version = extract_version(version, self).await?;
 
@@ -1139,6 +1147,7 @@ impl<'ctx> Planner<'ctx> {
 			},
 			omit,
 			tempfiles,
+			preserve_order,
 		};
 
 		let projected = pp.plan_pipeline(source, Some(fields), config).await?;

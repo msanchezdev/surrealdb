@@ -458,6 +458,7 @@ impl RecordId {
 			timeout: Expr::Literal(Literal::None),
 			explain: None,
 			tempfiles: false,
+			preserve_order: false,
 		};
 
 		Ok(stk.run(|stk| stm.compute(stk, ctx, opt, doc)).await?.first().into_object())

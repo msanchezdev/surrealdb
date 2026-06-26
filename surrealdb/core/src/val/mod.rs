@@ -48,7 +48,7 @@ pub(crate) use self::duration::Duration;
 pub(crate) use self::file::File;
 pub(crate) use self::geometry::Geometry;
 pub(crate) use self::number::{DecimalExt, Number};
-pub(crate) use self::object::Object;
+pub(crate) use self::object::{Object, ObjectMap};
 pub(crate) use self::range::Range;
 pub(crate) use self::record_id::{RecordId, RecordIdKey, RecordIdKeyRange};
 pub(crate) use self::regex::Regex;
@@ -1116,7 +1116,7 @@ impl From<VecMap<String, Value>> for Value {
 
 impl From<VecMap<Strand, Value>> for Value {
 	fn from(v: VecMap<Strand, Value>) -> Self {
-		Value::Object(Object(v))
+		Value::Object(Object::from(v))
 	}
 }
 
@@ -1263,8 +1263,13 @@ fn convert_set_to_public(value: crate::val::Set) -> Result<surrealdb_types::Valu
 }
 
 fn convert_object_to_public(value: crate::val::Object) -> Result<surrealdb_types::Value> {
+	// Carry the presentation-order side-car across the boundary so output
+	// formats can render fields in written order.
+	let order = value.1.clone();
 	let converted = convert_object_to_public_map(value)?;
-	Ok(surrealdb_types::Value::Object(surrealdb_types::Object::from(converted)))
+	let mut obj = surrealdb_types::Object::from(converted);
+	obj.set_display_order(order);
+	Ok(surrealdb_types::Value::Object(obj))
 }
 
 pub(crate) fn convert_object_to_public_map(

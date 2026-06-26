@@ -56,8 +56,14 @@ impl Value {
 				set.0.into_iter().map(Value::into_json_value).collect::<Vec<JsonValue>>(),
 			),
 			Value::Object(object) => {
-				let mut map = Map::with_capacity(object.len());
-				for (k, v) in object.0 {
+				// field-ordering PoC: emit fields in presentation order. This relies on
+				// `serde_json`'s `preserve_order` feature (enabled in the workspace
+				// Cargo.toml as a PoC shortcut) so the `Map` keeps insertion order rather
+				// than re-sorting. A production version would use a dedicated ordered JSON
+				// encoder here and drop that global feature — see the Cargo.toml note.
+				let entries = object.into_iter_display();
+				let mut map = Map::with_capacity(entries.len());
+				for (k, v) in entries {
 					map.insert(k, v.into_json_value());
 				}
 				JsonValue::Object(map)

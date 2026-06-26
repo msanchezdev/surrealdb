@@ -161,6 +161,7 @@ impl<'ctx> Planner<'ctx> {
 		omit: Vec<Expr>,
 		input: Arc<dyn ExecOperator>,
 		registry: &mut ExpressionRegistry,
+		preserve_order: bool,
 	) -> Result<Arc<dyn ExecOperator>, Error> {
 		match fields {
 			Fields::Value(selector) => {
@@ -212,6 +213,7 @@ impl<'ctx> Planner<'ctx> {
 						input,
 						projections,
 						Arc::new(OperatorMetrics::new()),
+						false,
 					)) as Arc<dyn ExecOperator>);
 				}
 
@@ -383,6 +385,7 @@ impl<'ctx> Planner<'ctx> {
 					computed,
 					projections,
 					Arc::new(OperatorMetrics::new()),
+					preserve_order,
 				)) as Arc<dyn ExecOperator>)
 			}
 		}

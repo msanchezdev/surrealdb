@@ -66,6 +66,12 @@ impl Parser<'_> {
 		};
 		let timeout = self.try_parse_timeout(stk).await?;
 		let tempfiles = self.eat(t!("TEMPFILES"));
+		let preserve_order = if self.eat(t!("PRESERVE")) {
+			self.eat(t!("ORDER"));
+			true
+		} else {
+			false
+		};
 		let explain = self.try_parse_explain()?;
 
 		Ok(SelectStatement {
@@ -84,6 +90,7 @@ impl Parser<'_> {
 			version,
 			timeout,
 			tempfiles,
+			preserve_order,
 			explain,
 		})
 	}

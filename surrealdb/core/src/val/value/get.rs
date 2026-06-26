@@ -482,6 +482,7 @@ impl Value {
 								timeout: Expr::Literal(Literal::None),
 								explain: None,
 								tempfiles: false,
+								preserve_order: false,
 							};
 
 							let res = stk.run(|stk| stm.compute(stk, ctx, opt, doc)).await?.all();

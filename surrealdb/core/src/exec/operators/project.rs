@@ -621,6 +621,8 @@ pub struct SelectProject {
 	pub input: Arc<dyn ExecOperator>,
 	/// The projections to apply (shared across batches via Arc)
 	pub projections: Arc<[Projection]>,
+	/// PoC: preserve written projection order in output objects.
+	pub(crate) preserve_order: bool,
 	/// Per-operator metrics for EXPLAIN ANALYZE
 	pub(crate) metrics: Arc<OperatorMetrics>,
 }
@@ -631,10 +633,12 @@ impl SelectProject {
 		input: Arc<dyn ExecOperator>,
 		projections: Vec<Projection>,
 		metrics: Arc<OperatorMetrics>,
+		preserve_order: bool,
 	) -> Self {
 		Self {
 			input,
 			projections: projections.into(),
+			preserve_order,
 			metrics,
 		}
 	}
@@ -703,6 +707,7 @@ impl ExecOperator for SelectProject {
 			ctx.root().ctx.config.operator_buffer_size,
 		);
 		let projections = Arc::clone(&self.projections);
+		let preserve_order = self.preserve_order;
 		let ctx = ctx.clone();
 
 		// Create a stream that applies projections
@@ -716,9 +721,12 @@ impl ExecOperator for SelectProject {
 
 				for value in batch.values {
 					let is_record_id = matches!(&value, Value::RecordId(_));
-					let projected = apply_projections(value, &projections, &ctx).await?;
+					let mut projected = apply_projections(value, &projections, &ctx).await?;
 					if is_record_id && matches!(&projected, Value::None) {
 						continue;
+					}
+					if preserve_order {
+						apply_written_order(&mut projected, &projections);
 					}
 					projected_values.push(projected);
 				}
@@ -818,9 +826,64 @@ fn apply_projections_to_object(
 	}
 }
 
+/// PoC (`PRESERVE ORDER`): record the written projection order on an output
+/// object so it is emitted in the order the query listed the fields rather than
+/// alphabetically. Presentation-only — never touches comparison or storage.
+pub(crate) fn apply_written_order(value: &mut Value, projections: &[Projection]) {
+	if let Value::Object(obj) = value {
+		let order: Vec<&str> = projections
+			.iter()
+			.filter_map(|p| match p {
+				Projection::Include(n) => Some(n.as_str()),
+				Projection::Rename {
+					to,
+					..
+				} => Some(to.as_str()),
+				_ => None,
+			})
+			.collect();
+		obj.set_written_order(order);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn preserve_order_sets_written_display_order() {
+		// SELECT c, a, b — the output object is sorted internally but must
+		// display in written order once PRESERVE ORDER is applied.
+		let mut value = Value::Object(Object::from(vec![
+			("a".to_string(), Value::from(1)),
+			("b".to_string(), Value::from(2)),
+			("c".to_string(), Value::from(3)),
+		]));
+		let projections = vec![
+			Projection::Include(Strand::new("c")),
+			Projection::Include(Strand::new("a")),
+			Projection::Include(Strand::new("b")),
+		];
+		apply_written_order(&mut value, &projections);
+
+		let Value::Object(obj) = &value else {
+			panic!("expected object");
+		};
+		let display: Vec<&str> =
+			obj.iter_display().into_iter().map(|(k, _)| k.as_str()).collect();
+		assert_eq!(display, vec!["c", "a", "b"], "display order follows the projection list");
+
+		// Logical iteration (and therefore equality/storage) stays sorted.
+		let sorted: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
+		assert_eq!(sorted, vec!["a", "b", "c"]);
+
+		// ToSql renders in written order.
+		let rendered = surrealdb_types::ToSql::to_sql(&value);
+		assert!(
+			rendered.find('c').unwrap() < rendered.find('a').unwrap(),
+			"ToSql emits written order, got: {rendered}"
+		);
+	}
 
 	#[test]
 	fn test_apply_projections_include() {

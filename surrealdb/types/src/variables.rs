@@ -95,7 +95,7 @@ impl From<Object> for Variables {
 
 impl From<Variables> for Object {
 	fn from(vars: Variables) -> Self {
-		Object(vars.0)
+		Object(vars.0, None)
 	}
 }
 

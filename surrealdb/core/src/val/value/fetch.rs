@@ -67,6 +67,7 @@ impl Value {
 							timeout: Expr::Literal(Literal::None),
 							explain: None,
 							tempfiles: false,
+							preserve_order: false,
 						};
 						*this = stm
 							.compute(stk, ctx, opt, None)
@@ -270,6 +271,7 @@ impl Value {
 					timeout: Expr::Literal(Literal::None),
 					explain: None,
 					tempfiles: false,
+					preserve_order: false,
 				};
 				*this = stm.compute(stk, ctx, opt, None).await?.first();
 				Ok(())
