@@ -123,6 +123,8 @@ impl std::str::FromStr for FuncTarget {
 pub enum ExperimentalTarget {
 	Files,
 	Surrealism,
+	/// Field/key ordering preservation in query output (PoC).
+	FieldOrdering,
 }
 
 impl fmt::Display for ExperimentalTarget {
@@ -130,6 +132,7 @@ impl fmt::Display for ExperimentalTarget {
 		match self {
 			Self::Files => write!(f, "files"),
 			Self::Surrealism => write!(f, "surrealism"),
+			Self::FieldOrdering => write!(f, "field_ordering"),
 		}
 	}
 }
@@ -145,6 +148,7 @@ impl Target<str> for ExperimentalTarget {
 		match self {
 			Self::Files => elem.eq_ignore_ascii_case("files"),
 			Self::Surrealism => elem.eq_ignore_ascii_case("surrealism"),
+			Self::FieldOrdering => elem.eq_ignore_ascii_case("field_ordering"),
 		}
 	}
 }
@@ -172,6 +176,7 @@ impl std::str::FromStr for ExperimentalTarget {
 		match s.trim().to_ascii_lowercase().as_str() {
 			"files" => Ok(ExperimentalTarget::Files),
 			"surrealism" => Ok(ExperimentalTarget::Surrealism),
+			"field_ordering" => Ok(ExperimentalTarget::FieldOrdering),
 			_ => Err(ParseExperimentalTargetError::InvalidName),
 		}
 	}

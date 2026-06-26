@@ -51,6 +51,8 @@ pub(crate) struct SelectStatement {
 	pub timeout: Expr,
 	pub explain: Option<Explain>,
 	pub tempfiles: bool,
+	/// PoC: PRESERVE ORDER trailing clause — preserve written field order in output.
+	pub preserve_order: bool,
 }
 
 impl SelectStatement {

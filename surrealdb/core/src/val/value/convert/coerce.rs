@@ -960,7 +960,7 @@ mod tests {
 			surrealdb_strand::Strand::new_static("bad_field"),
 			Value::String(Strand::new_static("not_an_int")),
 		);
-		let value = Value::Object(Object(map.into()));
+		let value = Value::Object(Object::from(map));
 
 		let err = value.coerce_to::<BTreeMap<String, i64>>().unwrap_err();
 		let msg = err.to_string();

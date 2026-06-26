@@ -315,6 +315,7 @@ impl DefineTableStatement {
 			timeout: Expr::Literal(Literal::None),
 			explain: None,
 			tempfiles: false,
+			preserve_order: false,
 		};
 
 		let Value::Array(Array(v)) = select.compute(stk, ctx, opt, None).await? else {
@@ -562,6 +563,7 @@ impl DefineTableStatement {
 			timeout: Expr::Literal(Literal::None),
 			explain: None,
 			tempfiles: false,
+			preserve_order: false,
 		};
 		let res = stmt.compute(stk, ctx, opt, None).await?;
 		let Value::Array(res) = res else {

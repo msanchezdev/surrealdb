@@ -953,15 +953,15 @@ impl_surreal_value!(
 impl_surreal_value!(
 	<V> BTreeMap<String, V> as kind!(object),
 	(value) => {
-		if let Value::Object(Object(o)) = value {
+		if let Value::Object(Object(o, ..)) = value {
 			o.iter().all(|(_, v)| V::is_value(v))
 		} else {
 			false
 		}
 	},
-	from_btreemap<V>(self) => Value::Object(Object(self.into_iter().map(|(k, v)| (k, v.into_value())).collect())),
+	from_btreemap<V>(self) => Value::Object(Object(self.into_iter().map(|(k, v)| (k, v.into_value())).collect(), None)),
 	into_btreemap<V>(value) => {
-		let Value::Object(Object(o)) = value else {
+		let Value::Object(Object(o, ..)) = value else {
 			return Err(ConversionError::from_value(Self::kind_of(), &value).into());
 		};
 		o
@@ -975,15 +975,15 @@ impl_surreal_value!(
 impl_surreal_value!(
 	<V> HashMap<String, V> as kind!(object),
 	(value) => {
-		if let Value::Object(Object(o)) = value {
+		if let Value::Object(Object(o, ..)) = value {
 			o.iter().all(|(_, v)| V::is_value(v))
 		} else {
 			false
 		}
 	},
-	from_hashmap<V>(self) => Value::Object(Object(self.into_iter().map(|(k, v)| (k, v.into_value())).collect())),
+	from_hashmap<V>(self) => Value::Object(Object(self.into_iter().map(|(k, v)| (k, v.into_value())).collect(), None)),
 	into_hashmap<V>(value) => {
-		let Value::Object(Object(o)) = value else {
+		let Value::Object(Object(o, ..)) = value else {
 			return Err(ConversionError::from_value(Self::kind_of(), &value).into());
 		};
 		o
@@ -1505,7 +1505,7 @@ impl SurrealValue for http::HeaderMap {
 		// For each kv pair in the object:
 		//  - If the value is an array, insert each value into the header map.
 		//  - Otherwise, insert the value into the header map.
-		let Value::Object(Object(o)) = value else {
+		let Value::Object(Object(o, ..)) = value else {
 			return Err(ConversionError::from_value(Self::kind_of(), &value).into());
 		};
 		let mut res = http::HeaderMap::new();
@@ -1774,36 +1774,42 @@ impl<T: Serialize + DeserializeOwned + 'static> SurrealValue for SerdeWrapper<T>
 					.into_iter()
 					.map(|(key, uuid)| (key, Value::Uuid(Uuid::from(uuid))))
 					.collect(),
+				None,
 			)),
 			BTreeMap<String, chrono::DateTime<chrono::Utc>> as map => Value::Object(Object(
 				map
 					.into_iter()
 					.map(|(key, datetime)| (key, Value::Datetime(Datetime::from(datetime))))
 					.collect(),
+				None,
 			)),
 		BTreeMap<String, std::time::Duration> as map => Value::Object(Object(
 			map
 				.into_iter()
 				.map(|(key, duration)| (key, Value::Duration(Duration::from(duration))))
 				.collect(),
+			None,
 		)),
 		HashMap<String, uuid::Uuid> as map => Value::Object(Object(
 			map
 				.into_iter()
 				.map(|(key, uuid)| (key, Value::Uuid(Uuid::from(uuid))))
 				.collect(),
+			None,
 		)),
 		HashMap<String, chrono::DateTime<chrono::Utc>> as map => Value::Object(Object(
 			map
 				.into_iter()
 				.map(|(key, datetime)| (key, Value::Datetime(Datetime::from(datetime))))
 				.collect(),
+			None,
 		)),
 		HashMap<String, std::time::Duration> as map => Value::Object(Object(
 			map
 				.into_iter()
 				.map(|(key, duration)| (key, Value::Duration(Duration::from(duration))))
 				.collect(),
+			None,
 		)),
 		value => match value.serialize(Serializer) {
 			Ok(value) => value,

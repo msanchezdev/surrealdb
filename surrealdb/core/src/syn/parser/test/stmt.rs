@@ -2006,7 +2006,7 @@ pub fn parse_for() {
 					version: Expr::Literal(Literal::None),
 					timeout: Expr::Literal(Literal::None),
 					explain: None,
-					tempfiles: false
+					tempfiles: false, preserve_order: false
 				}))),
 				op: BinaryOperator::Multiply,
 				right: Box::new(Expr::Literal(Literal::Integer(2)))
@@ -2368,7 +2368,7 @@ fn parse_insert_select() {
 				version: Expr::Literal(Literal::None),
 				timeout: Expr::Literal(Literal::None),
 				explain: None,
-				tempfiles: false
+				tempfiles: false, preserve_order: false
 			}))),
 			ignore: true,
 			update: None,
@@ -3083,4 +3083,32 @@ fn parse_access_purge() {
 			})))
 		);
 	}
+}
+
+#[test]
+fn parse_select_preserve_order() {
+	use surrealdb_types::ToSql;
+	// The clause parses and sets the flag.
+	let res = syn::parse_with(
+		r"SELECT c, a, b FROM t PRESERVE ORDER".as_bytes(),
+		async |parser, stk| parser.parse_expr_inherit(stk).await,
+	)
+	.unwrap();
+	let Expr::Select(stmt) = &res else {
+		panic!("expected select, got {res:?}");
+	};
+	assert!(stmt.preserve_order, "PRESERVE ORDER clause sets preserve_order");
+	assert!(res.to_sql().contains("PRESERVE ORDER"), "round-trips: {}", res.to_sql());
+
+	// Without the clause the flag is false (and ORDER BY parses independently).
+	let plain = syn::parse_with(
+		r"SELECT c, a, b FROM t ORDER BY a".as_bytes(),
+		async |parser, stk| parser.parse_expr_inherit(stk).await,
+	)
+	.unwrap();
+	let Expr::Select(stmt2) = &plain else {
+		panic!("expected select");
+	};
+	assert!(!stmt2.preserve_order);
+	assert!(!plain.to_sql().contains("PRESERVE ORDER"));
 }

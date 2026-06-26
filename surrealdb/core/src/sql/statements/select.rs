@@ -26,6 +26,7 @@ pub struct SelectStatement {
 	pub timeout: Expr,
 	pub explain: Option<Explain>,
 	pub tempfiles: bool,
+	pub preserve_order: bool,
 }
 
 impl ToSql for SelectStatement {
@@ -69,6 +70,9 @@ impl ToSql for SelectStatement {
 		if !matches!(self.timeout, Expr::Literal(Literal::None)) {
 			write_sql!(f, fmt, " TIMEOUT {}", CoverStmts(&self.timeout));
 		}
+		if self.preserve_order {
+			write_sql!(f, fmt, " PRESERVE ORDER");
+		}
 		if let Some(ref v) = self.explain {
 			write_sql!(f, fmt, " {v}");
 		}
@@ -94,6 +98,7 @@ impl From<SelectStatement> for crate::expr::statements::SelectStatement {
 			timeout: v.timeout.into(),
 			explain: v.explain.map(Into::into),
 			tempfiles: v.tempfiles,
+			preserve_order: v.preserve_order,
 		}
 	}
 }
@@ -117,6 +122,7 @@ impl From<crate::expr::statements::SelectStatement> for SelectStatement {
 			timeout: v.timeout.into(),
 			explain: v.explain.map(Into::into),
 			tempfiles: v.tempfiles,
+			preserve_order: v.preserve_order,
 		}
 	}
 }

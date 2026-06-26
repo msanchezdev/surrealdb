@@ -161,6 +161,7 @@ keyword! {
 	PostingsCache => "POSTINGS_CACHE",
 	PostingsOrder => "POSTINGS_ORDER",
 	Prepare => "PREPARE",
+	Preserve => "PRESERVE",
 	Punct => "PUNCT",
 	Purge => "PURGE",
 	Range => "RANGE",

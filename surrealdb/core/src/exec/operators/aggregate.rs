@@ -853,6 +853,6 @@ async fn compute_aggregate_field_value(
 		}
 	} else {
 		// No post-expression means direct single aggregate - return first value
-		Ok(agg_doc.0.into_values().next().unwrap_or(Value::Null))
+		Ok(agg_doc.0.0.into_values().next().unwrap_or(Value::Null))
 	}
 }

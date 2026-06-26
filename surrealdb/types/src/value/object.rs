@@ -1,24 +1,28 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::sql::{SqlFormat, ToSql};
 use crate::{SurrealValue, Value};
 
 /// Represents an object with key-value pairs in SurrealDB
 ///
-/// An object is a collection of key-value pairs where keys are strings and values can be of any
-/// type. The underlying storage is a `BTreeMap<String, Value>` which maintains sorted keys.
-
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct Object(pub(crate) BTreeMap<String, Value>);
+/// Keys are stored canonically sorted in a `BTreeMap<String, Value>`. The
+/// optional second field is a **presentation order** side-car (a permutation of
+/// the sorted entries) used only for output — it is excluded from equality,
+/// hashing, and the serialized data, so two objects that differ only in display
+/// order remain equal and serialise to the same shape. `None` = sorted output.
+#[derive(Clone, Debug, Default)]
+pub struct Object(pub(crate) BTreeMap<String, Value>, pub(crate) Option<Box<[u32]>>);
 
 impl Object {
 	/// Create a new empty object
 	pub fn new() -> Self {
-		Object(BTreeMap::new())
+		Object(BTreeMap::new(), None)
 	}
 
 	/// Insert a key-value pair into the object
@@ -29,6 +33,90 @@ impl Object {
 	/// Convert into the inner BTreeMap<String, Value>
 	pub fn into_inner(self) -> BTreeMap<String, Value> {
 		self.0
+	}
+
+	/// Set the presentation order (a permutation of indices into the sorted
+	/// entries). Affects only output formatting, never comparison or hashing.
+	pub fn set_display_order(&mut self, order: Option<Box<[u32]>>) {
+		self.1 = order;
+	}
+
+	/// Consume the object, returning entries in presentation order when set,
+	/// otherwise sorted.
+	pub fn into_iter_display(self) -> Vec<(String, Value)> {
+		let entries: Vec<(String, Value)> = self.0.into_iter().collect();
+		match self.1 {
+			Some(order) => {
+				let mut slots: Vec<Option<(String, Value)>> =
+					entries.into_iter().map(Some).collect();
+				order
+					.iter()
+					.filter_map(|&i| slots.get_mut(i as usize).and_then(Option::take))
+					.collect()
+			}
+			None => entries,
+		}
+	}
+
+	/// Iterate entries in presentation order when set, otherwise sorted.
+	pub fn iter_display(&self) -> Vec<(&String, &Value)> {
+		let entries: Vec<(&String, &Value)> = self.0.iter().collect();
+		match &self.1 {
+			Some(order) => {
+				order.iter().filter_map(|&i| entries.get(i as usize).copied()).collect()
+			}
+			None => entries,
+		}
+	}
+}
+
+// Comparison / hashing / serialized data delegate to the sorted map, ignoring
+// the presentation-order side-car.
+impl PartialEq for Object {
+	fn eq(&self, other: &Self) -> bool {
+		self.0 == other.0
+	}
+}
+impl Eq for Object {}
+impl PartialOrd for Object {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+impl Ord for Object {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.0.cmp(&other.0)
+	}
+}
+impl Hash for Object {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.0.hash(state);
+	}
+}
+
+impl Serialize for Object {
+	/// Serialise as a map. When a display order is set, entries are emitted in
+	/// that order, so JSON/CBOR clients receive keys in written order.
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		let entries = self.iter_display();
+		let mut map = serializer.serialize_map(Some(entries.len()))?;
+		for (k, v) in entries {
+			map.serialize_entry(k, v)?;
+		}
+		map.end()
+	}
+}
+
+impl<'de> Deserialize<'de> for Object {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		Ok(Object(BTreeMap::deserialize(deserializer)?, None))
+	}
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Object {
+	fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+		Ok(Object(BTreeMap::arbitrary(u)?, None))
 	}
 }
 
@@ -62,7 +150,7 @@ impl ToSql for Object {
 
 		if !self.is_empty() {
 			let inner_fmt = fmt.increment();
-			fmt_sql_key_value(self.iter(), f, inner_fmt);
+			fmt_sql_key_value(self.iter_display().into_iter(), f, inner_fmt);
 		}
 
 		if fmt.is_pretty() {
@@ -75,31 +163,31 @@ impl ToSql for Object {
 
 impl<T: SurrealValue> From<BTreeMap<&str, T>> for Object {
 	fn from(v: BTreeMap<&str, T>) -> Self {
-		Self(v.into_iter().map(|(key, val)| (key.to_string(), val.into_value())).collect())
+		Self(v.into_iter().map(|(key, val)| (key.to_string(), val.into_value())).collect(), None)
 	}
 }
 
 impl<T: SurrealValue> From<BTreeMap<String, T>> for Object {
 	fn from(v: BTreeMap<String, T>) -> Self {
-		Self(v.into_iter().map(|(key, val)| (key, val.into_value())).collect())
+		Self(v.into_iter().map(|(key, val)| (key, val.into_value())).collect(), None)
 	}
 }
 
 impl<T: SurrealValue> FromIterator<(String, T)> for Object {
 	fn from_iter<I: IntoIterator<Item = (String, T)>>(iter: I) -> Self {
-		Self(BTreeMap::from_iter(iter.into_iter().map(|(k, v)| (k, v.into_value()))))
+		Self(BTreeMap::from_iter(iter.into_iter().map(|(k, v)| (k, v.into_value()))), None)
 	}
 }
 
 impl<T: SurrealValue> From<HashMap<&str, T>> for Object {
 	fn from(v: HashMap<&str, T>) -> Self {
-		Self(v.into_iter().map(|(key, val)| (key.to_string(), val.into_value())).collect())
+		Self(v.into_iter().map(|(key, val)| (key.to_string(), val.into_value())).collect(), None)
 	}
 }
 
 impl<T: SurrealValue> From<HashMap<String, T>> for Object {
 	fn from(v: HashMap<String, T>) -> Self {
-		Self(v.into_iter().map(|(key, val)| (key, val.into_value())).collect())
+		Self(v.into_iter().map(|(key, val)| (key, val.into_value())).collect(), None)
 	}
 }
 
