@@ -126,6 +126,13 @@ impl Parser<'_> {
 			kind,
 			..Default::default()
 		};
+		// `FROM <source_db> [VERSION <datetime>]` — copy-on-write branch source.
+		if self.eat(t!("FROM")) {
+			res.from = Some(stk.run(|ctx| self.parse_expr_field(ctx)).await?);
+			if self.eat(t!("VERSION")) {
+				res.from_version = Some(stk.run(|ctx| self.parse_expr_field(ctx)).await?);
+			}
+		}
 		loop {
 			match self.peek_kind() {
 				t!("COMMENT") => {

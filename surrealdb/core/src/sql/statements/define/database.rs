@@ -14,6 +14,10 @@ pub(crate) struct DefineDatabaseStatement {
 	pub strict: bool,
 	pub comment: Expr,
 	pub changefeed: Option<ChangeFeed>,
+	/// `FROM <source_db>` — branch this database from an existing one (CoW).
+	pub from: Option<Expr>,
+	/// `VERSION <datetime>` after `FROM` — branch from a point in the source's history.
+	pub from_version: Option<Expr>,
 }
 
 impl Default for DefineDatabaseStatement {
@@ -25,6 +29,8 @@ impl Default for DefineDatabaseStatement {
 			comment: Expr::Literal(Literal::None),
 			changefeed: None,
 			strict: false,
+			from: None,
+			from_version: None,
 		}
 	}
 }
@@ -38,6 +44,12 @@ impl ToSql for DefineDatabaseStatement {
 			DefineKind::IfNotExists => write_sql!(f, sql_fmt, " IF NOT EXISTS"),
 		}
 		write_sql!(f, sql_fmt, " {}", CoverStmts(&self.name));
+		if let Some(ref src) = self.from {
+			write_sql!(f, sql_fmt, " FROM {}", CoverStmts(src));
+			if let Some(ref v) = self.from_version {
+				write_sql!(f, sql_fmt, " VERSION {}", CoverStmts(v));
+			}
+		}
 		if self.strict {
 			f.push_str(" STRICT");
 		}
@@ -59,6 +71,8 @@ impl From<DefineDatabaseStatement> for crate::expr::statements::DefineDatabaseSt
 			comment: v.comment.into(),
 			changefeed: v.changefeed.map(Into::into),
 			strict: v.strict,
+			from: v.from.map(Into::into),
+			from_version: v.from_version.map(Into::into),
 		}
 	}
 }
@@ -73,6 +87,8 @@ impl From<crate::expr::statements::DefineDatabaseStatement> for DefineDatabaseSt
 			strict: v.strict,
 			comment: v.comment.into(),
 			changefeed: v.changefeed.map(Into::into),
+			from: v.from.map(Into::into),
+			from_version: v.from_version.map(Into::into),
 		}
 	}
 }

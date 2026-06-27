@@ -130,3 +130,24 @@ impl InfoStructure for DatabaseDefinition {
 		})
 	}
 }
+
+/// Copy-on-write branch metadata for a database.
+///
+/// Stored in a separate additive catalog key (`key::namespace::bm`) keyed by the
+/// branch's `(NamespaceId, DatabaseId)` — deliberately NOT a field on
+/// [`DatabaseDefinition`], so ordinary databases keep a byte-identical on-disk
+/// encoding (no revision bump, no `catalog::compat` fixture churn). A row exists
+/// here only for branches; its absence means "ordinary database".
+///
+/// Gated behind `ExperimentalTarget::DatabaseBranching`.
+#[revisioned(revision = 1)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct BranchMetadata {
+	/// The parent database this branch was created from (same namespace).
+	pub(crate) parent: DatabaseId,
+	/// The parent versionstamp this branch is pinned to — its fall-through base for
+	/// reads and the fast-forward-merge anchor. Always set for a branch (resolved at
+	/// `DEFINE DATABASE … FROM` time, even when branched at "now").
+	pub(crate) base_version: u64,
+}
+impl_kv_value_revisioned!(BranchMetadata);

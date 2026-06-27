@@ -7,8 +7,9 @@ use anyhow::{Result, bail};
 use reblessive::tree::Stk;
 
 use crate::catalog::providers::TableProvider;
-use crate::catalog::{DatabaseId, NamespaceId, Record};
+use crate::catalog::{BranchMetadata, DatabaseId, NamespaceId, Record};
 use crate::ctx::{Context, FrozenContext};
+use crate::dbs::capabilities::ExperimentalTarget;
 use crate::dbs::distinct::SyncDistinct;
 use crate::dbs::{Iterable, Iterator, Operable, Options, Processable, Statement};
 use crate::doc::{DocumentContext, NsDbCtx};
@@ -19,7 +20,10 @@ use crate::expr::statements::relate::RelateThrough;
 use crate::idx::planner::iterators::{IndexItemRecord, IteratorRef, RecordIterator};
 use crate::idx::planner::{IterationStage, RecordStrategy, ScanDirection};
 use crate::key::{graph, record, r#ref};
-use crate::kvs::{KVKey, KVValue, Key, NORMAL_BATCH_SIZE, ScanLimit, Transaction, Val};
+use crate::kvs::{
+	KVKey, KVValue, Key, MergeCursor, NORMAL_BATCH_SIZE, NSDB_PREFIX_LEN, ScanLimit, Transaction,
+	Val,
+};
 use crate::val::{RecordId, RecordIdKey, RecordIdKeyRange, TableName, Value};
 
 impl Iterable {
@@ -813,6 +817,16 @@ pub(super) trait Collector {
 		let ns = doc_ctx.ns().namespace_id;
 		let db = doc_ctx.db().database_id;
 
+		// Copy-on-write branch overlay. Only when the experimental capability is on
+		// (so non-branch reads pay zero extra cost by default) do we check whether
+		// this database is a branch; if so, its rows are merged over the parent's
+		// rows read at the pinned base_version.
+		if ctx.get_capabilities().allows_experimental(&ExperimentalTarget::DatabaseBranching) {
+			if let Some(meta) = ctx.tx().get_branch_meta(ns, db).await? {
+				return self.collect_table_branch(ctx, opt, doc_ctx, table, sc, meta).await;
+			}
+		}
+
 		// Prepare the start and end keys
 		let beg = record::prefix(ns, db, table)?;
 		let end = record::suffix(ns, db, table)?;
@@ -848,6 +862,80 @@ pub(super) trait Collector {
 		}
 		// Everything ok
 		Ok(())
+	}
+
+	/// Copy-on-write branch table scan: merge this branch's own rows over the
+	/// parent's rows read at the pinned `base_version`, with branch rows winning.
+	///
+	/// PoC scope: materialises both ranges and runs them through [`MergeCursor`]
+	/// (not yet streaming), and there are no persisted tombstones yet (the branch
+	/// `DELETE` write-path is a later step), so every branch row is treated as live.
+	#[instrument(level = "trace", skip_all)]
+	async fn collect_table_branch(
+		&mut self,
+		ctx: &FrozenContext,
+		_opt: &Options,
+		doc_ctx: DocumentContext,
+		table: &TableName,
+		sc: ScanDirection,
+		meta: BranchMetadata,
+	) -> Result<()> {
+		let ns = doc_ctx.ns().namespace_id;
+		let db = doc_ctx.db().database_id;
+		let txn = ctx.tx();
+
+		// Branch rows (current state), scoped to this table.
+		let branch_beg = record::prefix(ns, db, table)?;
+		let branch_end = record::suffix(ns, db, table)?;
+		let branch_prefix = branch_beg[..NSDB_PREFIX_LEN].to_vec();
+		let branch_rows = Self::drain_vals(&txn, branch_beg..branch_end, None).await?;
+
+		// Parent rows. PoC reads the parent's CURRENT state (version = None); pinning the
+		// read to meta.base_version (already persisted) is the next step — it needs the
+		// branch versionstamp to line up with the backend's MVCC reads, which is follow-up
+		// work. Until then a branch is not isolated from later parent writes.
+		let _ = meta.base_version;
+		let parent_beg = record::prefix(ns, meta.parent, table)?;
+		let parent_end = record::suffix(ns, meta.parent, table)?;
+		let parent_rows = Self::drain_vals(&txn, parent_beg..parent_end, None).await?;
+
+		// Merge: branch entries are all live (no tombstones persisted yet); parent
+		// rows fall through and are rekeyed into the branch keyspace by the cursor.
+		let branch_entries = branch_rows.into_iter().map(|(k, v)| (k, Some(v)));
+		let mut merged: Vec<(Key, Val)> =
+			MergeCursor::new(branch_entries, parent_rows.into_iter(), branch_prefix).collect();
+		// MergeCursor yields ascending logical-key order; reverse for backward scans.
+		if matches!(sc, ScanDirection::Backward) {
+			merged.reverse();
+		}
+
+		let mut count = 0;
+		for (k, v) in merged {
+			if ctx.is_done(Some(count)).await? {
+				break;
+			}
+			self.collect(Collectable::KeyVal(doc_ctx.clone(), k, v)).await?;
+			count += 1;
+		}
+		Ok(())
+	}
+
+	/// Drain a value cursor over `rng` into owned `(Key, Val)` pairs (ascending).
+	async fn drain_vals(
+		txn: &Transaction,
+		rng: Range<Key>,
+		version: Option<u64>,
+	) -> Result<Vec<(Key, Val)>> {
+		let mut cursor = txn.open_vals_cursor(rng, ScanDirection::Forward, 0, version).await?;
+		let mut out = Vec::new();
+		loop {
+			let batch = cursor.next_batch(ScanLimit::Count(NORMAL_BATCH_SIZE)).await?;
+			if batch.is_empty() {
+				break;
+			}
+			out.extend(batch.iter().map(|(k, v)| (k.to_vec(), v.to_vec())));
+		}
+		Ok(out)
 	}
 
 	#[instrument(level = "trace", skip_all)]

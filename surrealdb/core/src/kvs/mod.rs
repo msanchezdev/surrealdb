@@ -19,6 +19,7 @@ pub mod export;
 
 mod api;
 mod batch;
+mod branch;
 mod clock;
 mod consts;
 mod direction;
@@ -48,6 +49,7 @@ pub(crate) mod slowlog;
 pub(crate) mod tasklease;
 pub(crate) mod version;
 
+pub(crate) use branch::{MergeCursor, NSDB_PREFIX_LEN};
 pub use api::{
 	GetMultiResult, KeysResult, ScanCursorKeys, ScanCursorVals, ScanLimit, ScanResult, Transactable,
 };

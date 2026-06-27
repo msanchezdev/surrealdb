@@ -34,8 +34,8 @@ use crate::catalog::providers::{
 	DatabaseProvider, NamespaceProvider, NodeProvider, RootProvider, TableProvider, UserProvider,
 };
 use crate::catalog::{
-	self, ApiDefinition, ConfigDefinition, DatabaseDefinition, DatabaseId, DefaultConfig, IndexId,
-	NamespaceDefinition, NamespaceId, Record, TableDefinition, TableId,
+	self, ApiDefinition, BranchMetadata, ConfigDefinition, DatabaseDefinition, DatabaseId,
+	DefaultConfig, IndexId, NamespaceDefinition, NamespaceId, Record, TableDefinition, TableId,
 };
 use crate::cf::Changefeed;
 use crate::cnf::CommonConfig;
@@ -1137,6 +1137,74 @@ impl Transaction {
 			.into_iter()
 			.map(|(k, v)| Ok((k, K::ValueType::kv_decode_value(&v, ())?)))
 			.collect()
+	}
+
+	/// Fetch the copy-on-write branch metadata for a database, if it is a branch.
+	///
+	/// Returns `None` for ordinary (non-branch) databases — their absence from the
+	/// branch-metadata keyspace is what distinguishes them. Gated behind
+	/// `ExperimentalTarget::DatabaseBranching` at the call sites.
+	// PoC: consumed once the DEFINE … FROM / processor overlay wiring lands.
+	#[allow(dead_code)]
+	#[instrument(level = "trace", target = "surrealdb::core::kvs::tx", skip_all)]
+	pub(crate) async fn get_branch_meta(
+		&self,
+		ns: NamespaceId,
+		db: DatabaseId,
+	) -> Result<Option<BranchMetadata>> {
+		let key = crate::key::namespace::bm::new(ns, db);
+		self.get(&key, None).await
+	}
+
+	/// Record branch metadata for a database, marking it as a copy-on-write branch.
+	#[allow(dead_code)]
+	#[instrument(level = "trace", target = "surrealdb::core::kvs::tx", skip_all)]
+	pub(crate) async fn put_branch_meta(
+		&self,
+		ns: NamespaceId,
+		db: DatabaseId,
+		meta: &BranchMetadata,
+	) -> Result<()> {
+		let key = crate::key::namespace::bm::new(ns, db);
+		self.set(&key, meta).await
+	}
+
+	/// Remove branch metadata (e.g. when the branch database is dropped).
+	#[allow(dead_code)]
+	#[instrument(level = "trace", target = "surrealdb::core::kvs::tx", skip_all)]
+	pub(crate) async fn del_branch_meta(&self, ns: NamespaceId, db: DatabaseId) -> Result<()> {
+		let key = crate::key::namespace::bm::new(ns, db);
+		self.del(&key).await
+	}
+
+	/// Return the database ids of all branches in `ns` whose parent is `parent`.
+	///
+	/// Backs the `REMOVE DATABASE` guard: a parent with live children cannot be
+	/// dropped (children fall through to `parent@base_version`). Single range scan
+	/// over the namespace's branch-metadata keyspace.
+	#[allow(dead_code)]
+	#[instrument(level = "trace", target = "surrealdb::core::kvs::tx", skip_all)]
+	pub(crate) async fn branch_children(
+		&self,
+		ns: NamespaceId,
+		parent: DatabaseId,
+	) -> Result<Vec<DatabaseId>> {
+		let beg = crate::key::namespace::bm::prefix(ns)?;
+		let end = crate::key::namespace::bm::suffix(ns)?;
+		let res = self.tr.getr(beg..end, None).await.map_err(Error::from)?;
+		let mut children = Vec::new();
+		for (k, v) in res.values {
+			let meta = BranchMetadata::kv_decode_value(&v, ())?;
+			if meta.parent == parent {
+				// The branch's own db id is the trailing 4 bytes (big-endian u32).
+				if let Some(tail) = k.get(k.len().wrapping_sub(4)..) {
+					if let Ok(bytes) = <[u8; 4]>::try_from(tail) {
+						children.push(DatabaseId(u32::from_be_bytes(bytes)));
+					}
+				}
+			}
+		}
+		Ok(children)
 	}
 
 	/// Delete a key from the datastore.

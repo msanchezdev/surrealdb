@@ -123,6 +123,7 @@ impl std::str::FromStr for FuncTarget {
 pub enum ExperimentalTarget {
 	Files,
 	Surrealism,
+	DatabaseBranching,
 }
 
 impl fmt::Display for ExperimentalTarget {
@@ -130,6 +131,7 @@ impl fmt::Display for ExperimentalTarget {
 		match self {
 			Self::Files => write!(f, "files"),
 			Self::Surrealism => write!(f, "surrealism"),
+			Self::DatabaseBranching => write!(f, "database_branching"),
 		}
 	}
 }
@@ -145,6 +147,7 @@ impl Target<str> for ExperimentalTarget {
 		match self {
 			Self::Files => elem.eq_ignore_ascii_case("files"),
 			Self::Surrealism => elem.eq_ignore_ascii_case("surrealism"),
+			Self::DatabaseBranching => elem.eq_ignore_ascii_case("database_branching"),
 		}
 	}
 }
@@ -172,6 +175,7 @@ impl std::str::FromStr for ExperimentalTarget {
 		match s.trim().to_ascii_lowercase().as_str() {
 			"files" => Ok(ExperimentalTarget::Files),
 			"surrealism" => Ok(ExperimentalTarget::Surrealism),
+			"database_branching" => Ok(ExperimentalTarget::DatabaseBranching),
 			_ => Err(ParseExperimentalTargetError::InvalidName),
 		}
 	}

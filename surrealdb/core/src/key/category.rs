@@ -66,6 +66,8 @@ pub enum Category {
 	NamespaceRoot,
 	/// crate::key::namespace::db            /*{ns}!db{db}
 	DatabaseAlias,
+	/// crate::key::namespace::bm            /*{ns}!bm{db}
+	DatabaseBranchMetadata,
 	/// crate::key::namespace::access::ac    /*{ns}!ac{ac}
 	NamespaceAccess,
 	/// crate::key::namespace::access::all   /*{ns}*{ac}
@@ -231,6 +233,7 @@ impl Display for Category {
 			Self::NodeLiveQuery => "NodeLiveQuery",
 			Self::NamespaceRoot => "NamespaceRoot",
 			Self::DatabaseAlias => "DatabaseAlias",
+			Self::DatabaseBranchMetadata => "DatabaseBranchMetadata",
 			Self::DatabaseIdentifierBatch => "DatabaseIdentifierBatch",
 			Self::DatabaseIdentifierState => "DatabaseIdentifierState",
 			Self::NamespaceAccess => "NamespaceAccess",

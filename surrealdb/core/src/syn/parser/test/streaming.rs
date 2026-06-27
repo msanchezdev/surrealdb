@@ -183,6 +183,8 @@ fn statements() -> Vec<TopLevelExpr> {
 					expiry: PublicDuration::from_secs(60 * 10),
 					store_diff: false,
 				}),
+				from: None,
+				from_version: None,
 			},
 		)))),
 		TopLevelExpr::Expr(Expr::Define(Box::new(DefineStatement::Database(
@@ -193,6 +195,8 @@ fn statements() -> Vec<TopLevelExpr> {
 				strict: false,
 				comment: Expr::Literal(Literal::None),
 				changefeed: None,
+				from: None,
+				from_version: None,
 			},
 		)))),
 		TopLevelExpr::Expr(Expr::Define(Box::new(DefineStatement::Function(

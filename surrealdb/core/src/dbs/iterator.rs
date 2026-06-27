@@ -9,6 +9,7 @@ use surrealdb_types::ToSql;
 use crate::catalog::Record;
 use crate::catalog::providers::TableProvider;
 use crate::ctx::{Canceller, Context, FrozenContext};
+use crate::dbs::capabilities::ExperimentalTarget;
 use crate::dbs::distinct::SyncDistinct;
 use crate::dbs::plan::{Explanation, Plan};
 use crate::dbs::result::Results;
@@ -316,14 +317,29 @@ impl Iterator {
 		table: &TableName,
 	) -> Result<()> {
 		let tb = if stm_ctx.stm.requires_table_existence() {
-			ctx.tx()
+			let txn = ctx.tx();
+			let mut found = txn
 				.get_tb(doc_ctx.ns.namespace_id, doc_ctx.db.database_id, table, opt.version)
-				.await?
-				.ok_or_else(|| {
-					anyhow::anyhow!(Error::TbNotFound {
-						name: table.to_owned(),
-					})
-				})?
+				.await?;
+			// Copy-on-write branch: a branch inherits its parent's table definitions,
+			// so on a miss fall through to the parent's catalog at the pinned base_version.
+			if found.is_none()
+				&& ctx.get_capabilities().allows_experimental(&ExperimentalTarget::DatabaseBranching)
+			{
+				if let Some(meta) =
+					txn.get_branch_meta(doc_ctx.ns.namespace_id, doc_ctx.db.database_id).await?
+				{
+					// PoC reads the parent's current catalog (version = None); base_version
+					// pinning is follow-up work (see processor::collect_table_branch).
+					found =
+						txn.get_tb(doc_ctx.ns.namespace_id, meta.parent, table, None).await?;
+				}
+			}
+			found.ok_or_else(|| {
+				anyhow::anyhow!(Error::TbNotFound {
+					name: table.to_owned(),
+				})
+			})?
 		} else {
 			ctx.tx()
 				.get_or_add_tb(Some(ctx), &doc_ctx.ns.name, &doc_ctx.db.name, table, opt.version)

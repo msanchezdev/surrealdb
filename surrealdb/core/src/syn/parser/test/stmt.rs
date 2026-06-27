@@ -207,6 +207,8 @@ fn parse_define_database() {
 				expiry: PublicDuration::from_secs(60 * 10),
 				store_diff: true,
 			}),
+			from: None,
+			from_version: None,
 		})))
 	);
 
@@ -223,8 +225,42 @@ fn parse_define_database() {
 			strict: false,
 			comment: Expr::Literal(Literal::None),
 			changefeed: None,
+			from: None,
+			from_version: None,
 		})))
 	)
+}
+
+#[test]
+fn parse_define_database_branch() {
+	// `FROM <src>` — branch at the source's current state.
+	let res = syn::parse_with("DEFINE DATABASE b FROM a".as_bytes(), async |parser, stk| {
+		parser.parse_expr_inherit(stk).await
+	})
+	.unwrap();
+	let Expr::Define(def) = res else {
+		panic!("expected DEFINE, got {res:?}");
+	};
+	let DefineStatement::Database(db) = *def else {
+		panic!("expected DEFINE DATABASE");
+	};
+	assert_eq!(db.from, Some(Expr::Idiom(Idiom::field("a".to_string()))));
+	assert_eq!(db.from_version, None);
+
+	// `FROM <src> VERSION <datetime>` — branch from a point in the source's history.
+	let res = syn::parse_with(
+		"DEFINE DATABASE b FROM a VERSION d\"2024-01-01T00:00:00Z\"".as_bytes(),
+		async |parser, stk| parser.parse_expr_inherit(stk).await,
+	)
+	.unwrap();
+	let Expr::Define(def) = res else {
+		panic!("expected DEFINE, got {res:?}");
+	};
+	let DefineStatement::Database(db) = *def else {
+		panic!("expected DEFINE DATABASE");
+	};
+	assert_eq!(db.from, Some(Expr::Idiom(Idiom::field("a".to_string()))));
+	assert!(db.from_version.is_some(), "VERSION clause should be parsed");
 }
 
 #[test]

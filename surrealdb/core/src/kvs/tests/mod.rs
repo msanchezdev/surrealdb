@@ -30,6 +30,10 @@ mod multiwriter_same_keys_conflict;
 mod raw;
 mod snapshot;
 #[cfg(feature = "kv-mem")]
+mod branch_meta_test;
+#[cfg(feature = "kv-surrealkv")]
+mod branch_e2e_test;
+#[cfg(feature = "kv-mem")]
 mod tx_cache_test;
 
 #[derive(Clone, Debug)]
